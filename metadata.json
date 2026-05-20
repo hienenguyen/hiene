@@ -1,6 +1,6 @@
 {
   "name": "Piano Bear Tracker",
-  "description": "A cute pink-themed tracker for piano lessons, helping students manage their 8-session courses.",
+  "description": "A cute pink-themed tracker for piano lessons with Google Account synchronization, helping students manage their 8-session courses across devices.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

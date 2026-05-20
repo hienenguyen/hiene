@@ -1,0 +1,50 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and state tracking",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string" },
+        "currentCourseId": { "type": "string" },
+        "totalFees": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "email", "currentCourseId"]
+    },
+    "Course": {
+      "title": "Course",
+      "description": "A single piano course consisting of 8 sessions",
+      "type": "object",
+      "properties": {
+        "courseNumber": { "type": "number" },
+        "startDate": { "type": "string", "format": "date-time" },
+        "sessions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "date": { "type": "string" }
+            }
+          }
+        },
+        "isCompleted": { "type": "boolean" },
+        "completionDate": { "type": "string", "format": "date-time" },
+        "fee": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["courseNumber", "startDate", "sessions", "isCompleted"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User document storing current state"
+    },
+    "/users/{userId}/courses/{courseId}": {
+      "schema": "Course",
+      "description": "Individual courses per user"
+    }
+  }
+}

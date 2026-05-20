@@ -10,30 +10,20 @@ import {
   CheckCircle2, 
   History, 
   Plus, 
-  ChevronLeft,
-  ChevronRight,
-  Trophy,
-  Piano,
-  RotateCcw,
-  Calendar as CalendarIcon,
-  Coins
+  ChevronLeft, 
+  ChevronRight, 
+  Trophy, 
+  Piano, 
+  Calendar as CalendarIcon, 
+  Coins, 
+  LogOut,
+  User as UserIcon,
+  Loader2
 } from 'lucide-react';
-import { AppState, Course, Session } from './types';
-
-const STORAGE_KEY = 'piano_bear_tracker_state_v2';
-
-const createNewCourse = (courseNumber: number): Course => ({
-  id: crypto.randomUUID(),
-  courseNumber,
-  startDate: new Date().toISOString(),
-  isCompleted: false,
-  sessions: []
-});
-
-const DEFAULT_STATE: AppState = {
-  currentCourse: createNewCourse(1),
-  courseHistory: []
-};
+import { Course, Session } from './types';
+import { useFirebase } from './contexts/FirebaseContext';
+import Login from './components/Login';
+import { auth } from './lib/firebase';
 
 // Helper to format date as YYYY-MM-DD
 const formatDateKey = (date: Date) => {
@@ -41,25 +31,18 @@ const formatDateKey = (date: Date) => {
 };
 
 export default function App() {
-  const [state, setState] = useState<AppState>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.error('Failed to parse state', e);
-      }
-    }
-    return DEFAULT_STATE;
-  });
+  const { user, loading: authLoading, state, createInitialUser, updateCourse, completeCourse } = useFirebase();
 
   // Calendar State
-  const [viewDate, setViewDate] = useState(new Date(2026, 4, 1)); // Default to May 2026 as requested
+  const [viewDate, setViewDate] = useState(new Date(2026, 4, 1)); // Default to May 2026
   const [showCelebration, setShowCelebration] = useState(false);
 
+  // Initialize new user profile if missing
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  }, [state]);
+    if (user && !state.profile && !state.isLoading) {
+      createInitialUser(user);
+    }
+  }, [user, state.profile, state.isLoading, createInitialUser]);
 
   const viewYear = viewDate.getFullYear();
   const viewMonth = viewDate.getMonth();
@@ -69,7 +52,9 @@ export default function App() {
 
   const monthName = new Intl.DateTimeFormat('vi-VN', { month: 'long', year: 'numeric' }).format(viewDate);
 
-  const toggleDate = (day: number) => {
+  const toggleDate = async (day: number) => {
+    if (!state.currentCourse) return;
+
     const dateStr = formatDateKey(new Date(viewYear, viewMonth, day));
     const isAlreadyCompleted = state.currentCourse.sessions.some(s => s.date === dateStr);
     
@@ -87,71 +72,46 @@ export default function App() {
 
     if (updatedSessions.length === 8) {
       setShowCelebration(true);
-      setTimeout(() => {
-        completeCourse(updatedSessions);
+      const nextCourseId = crypto.randomUUID();
+      setTimeout(async () => {
+        await completeCourse({ ...state.currentCourse!, sessions: updatedSessions }, nextCourseId);
         setShowCelebration(false);
       }, 3000);
     } else {
-      setState(prev => ({
-        ...prev,
-        currentCourse: { ...prev.currentCourse, sessions: updatedSessions }
-      }));
+      await updateCourse({ ...state.currentCourse, sessions: updatedSessions });
     }
-  };
-
-  const completeCourse = (sessions: Session[]) => {
-    const finishedCourse: Course = { 
-      ...state.currentCourse, 
-      sessions, 
-      isCompleted: true,
-      completionDate: new Date().toISOString()
-    };
-    
-    setState(prev => ({
-      courseHistory: [finishedCourse, ...prev.courseHistory],
-      currentCourse: createNewCourse(prev.courseHistory.length + 2)
-    }));
   };
 
   const nextMonth = () => setViewDate(new Date(viewYear, viewMonth + 1, 1));
   const prevMonth = () => setViewDate(new Date(viewYear, viewMonth - 1, 1));
 
-  const updateCourseFee = (courseId: string, feeStr: string) => {
+  const handleUpdateCourseFee = async (courseId: string, feeStr: string) => {
     const fee = parseInt(feeStr.replace(/\D/g, '')) || 0;
-    setState(prev => {
-      if (prev.currentCourse.id === courseId) {
-        return { ...prev, currentCourse: { ...prev.currentCourse, fee } };
+    
+    if (state.currentCourse?.id === courseId) {
+      await updateCourse({ ...state.currentCourse, fee });
+    } else {
+      const historyCourse = state.courseHistory.find(c => c.id === courseId);
+      if (historyCourse) {
+        const updatedCourse = { ...historyCourse, fee };
+        await updateCourse(updatedCourse);
       }
-      return {
-        ...prev,
-        courseHistory: prev.courseHistory.map(c => 
-          c.id === courseId ? { ...c, fee } : c
-        )
-      };
-    });
+    }
   };
 
   const totalFees = useMemo(() => {
     const historyTotal = state.courseHistory.reduce((sum, course) => sum + (course.fee || 0), 0);
-    const currentTotal = state.currentCourse.fee || 0;
+    const currentTotal = state.currentCourse?.fee || 0;
     return historyTotal + currentTotal;
-  }, [state.courseHistory, state.currentCourse.fee]);
+  }, [state.courseHistory, state.currentCourse?.fee]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
   };
 
-  const resetAll = () => {
-    if (window.confirm('Bạn có chắc chắn muốn xóa toàn bộ lịch sử?')) {
-      setState(DEFAULT_STATE);
-    }
-  };
-
-  const completedSessionsCount = state.currentCourse.sessions.length;
-
   const getDayStatus = (day: number) => {
     const dateStr = formatDateKey(new Date(viewYear, viewMonth, day));
-    const isInCurrent = state.currentCourse.sessions.some(s => s.date === dateStr);
+    const isInCurrent = state.currentCourse?.sessions.some(s => s.date === dateStr);
     if (isInCurrent) return 'current';
     
     const isInHistory = state.courseHistory.some(c => c.sessions.some(s => s.date === dateStr));
@@ -161,6 +121,30 @@ export default function App() {
   };
 
   const weekdays = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+
+  if (authLoading || (user && state.isLoading)) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-brand-soft text-brand-hot">
+        <Loader2 className="w-12 h-12 animate-spin mb-4" />
+        <p className="font-bold uppercase tracking-widest text-xs">Đang tải dữ liệu...</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Login />;
+  }
+
+  if (!state.currentCourse) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-brand-soft text-brand-hot">
+        <Loader2 className="w-12 h-12 animate-spin mb-4" />
+        <p className="font-bold uppercase tracking-widest text-xs">Bé đợi chút nhé...</p>
+      </div>
+    );
+  }
+
+  const completedSessionsCount = state.currentCourse.sessions.length;
 
   return (
     <div className="min-h-screen pb-12 px-4 flex flex-col items-center">
@@ -187,6 +171,22 @@ export default function App() {
       </AnimatePresence>
 
       <header className="py-8 text-center max-w-md w-full">
+        <div className="flex justify-between items-center mb-4 px-2">
+          <div className="flex items-center gap-2 bg-white/60 p-2 rounded-2xl border border-pink-50">
+            <div className="w-8 h-8 rounded-full bg-brand-pink flex items-center justify-center overflow-hidden">
+              {user.photoURL ? <img src={user.photoURL} alt="User" referrerPolicy="no-referrer" /> : <UserIcon size={16} className="text-brand-hot" />}
+            </div>
+            <span className="text-[10px] font-black text-gray-600 truncate max-w-[100px]">{user.displayName || user.email}</span>
+          </div>
+          <motion.button 
+            whileTap={{ scale: 0.9 }}
+            onClick={() => auth.signOut()}
+            className="p-2 bg-white/60 rounded-xl border border-pink-50 text-gray-400 hover:text-red-400 transition-colors"
+          >
+            <LogOut size={18} />
+          </motion.button>
+        </div>
+
         <motion.div 
           initial={{ y: -20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
@@ -214,7 +214,7 @@ export default function App() {
             </div>
             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Thống kê khóa học</p>
             <div className="flex flex-col">
-              <span className="text-2xl font-black text-gray-800">{state.courseHistory.length + 1}</span>
+              <span className="text-2xl font-black text-gray-800">{(state.courseHistory.length + 1)}</span>
               <span className="text-[10px] text-gray-400 font-medium leading-none">Khóa đã & đang học</span>
             </div>
           </div>
@@ -325,7 +325,7 @@ export default function App() {
                 type="text"
                 placeholder="Nhập học phí khóa này..."
                 value={state.currentCourse.fee ? state.currentCourse.fee.toLocaleString('vi-VN') : ''}
-                onChange={(e) => updateCourseFee(state.currentCourse.id, e.target.value)}
+                onChange={(e) => handleUpdateCourseFee(state.currentCourse!.id, e.target.value)}
                 className="w-full bg-transparent border-none p-0 text-sm font-black text-gray-700 placeholder:text-gray-300 focus:ring-0 focus:outline-none"
               />
               <span className="text-[10px] font-bold text-gray-400">VNĐ</span>
@@ -341,7 +341,7 @@ export default function App() {
           <div>
             <h3 className="font-bold text-brand-hot text-sm">Ghi chú cho gấu</h3>
             <p className="text-pink-600/70 text-xs leading-relaxed">
-              Tích chọn ngày gấu đi học đàn nhé. Khi đủ 8 buổi, gấu sẽ được nhận cúp và chuyển sang khóa học tiếp theo!
+              Tích chọn ngày gấu đi học đàn nhé. Dữ liệu sẽ được lưu vào tài khoản Google của bạn để có thể xem trên mọi thiết bị!
             </p>
           </div>
         </div>
@@ -353,10 +353,6 @@ export default function App() {
               <div className="flex items-center gap-2">
                 <History size={18} className="text-gray-400" />
                 <h2 className="text-gray-600 font-bold uppercase text-xs tracking-widest">Lịch sử khóa học</h2>
-              </div>
-              <div className="bg-white px-3 py-1.5 rounded-full border border-pink-100 shadow-sm flex items-center gap-2">
-                <Coins size={14} className="text-yellow-500" />
-                <span className="text-xs font-black text-gray-800">{formatCurrency(totalFees)}</span>
               </div>
             </div>
             
@@ -394,9 +390,9 @@ export default function App() {
                       <div className="flex-1 relative">
                         <input 
                           type="text"
-                          placeholder="Nhập số tiền (VD: 1.200.000)..."
+                          placeholder="Nhập số tiền..."
                           value={course.fee ? course.fee.toLocaleString('vi-VN') : ''}
-                          onChange={(e) => updateCourseFee(course.id, e.target.value)}
+                          onChange={(e) => handleUpdateCourseFee(course.id, e.target.value)}
                           className="w-full bg-transparent border-none p-0 text-sm font-black text-gray-700 placeholder:text-gray-300 focus:ring-0 focus:outline-none"
                         />
                       </div>
@@ -408,14 +404,6 @@ export default function App() {
             </div>
           </section>
         )}
-
-        <button 
-          onClick={resetAll}
-          className="w-full py-4 text-gray-400 hover:text-red-400 text-xs font-bold uppercase tracking-widest flex items-center justify-center gap-2 transition-colors mt-8"
-        >
-          <RotateCcw size={14} />
-          Xóa toàn bộ dữ liệu
-        </button>
       </main>
 
       <footer className="mt-auto pt-12 text-center">
