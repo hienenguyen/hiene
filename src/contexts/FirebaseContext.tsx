@@ -72,17 +72,31 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
         const profile = snap.data() as UserProfile;
         setState(prev => ({ ...prev, profile }));
         
-        // Fetch current course
         if (profile.currentCourseId) {
           const currentCourseRef = doc(db, 'users', user.uid, 'courses', profile.currentCourseId);
           getDoc(currentCourseRef).then(courseSnap => {
             if (courseSnap.exists()) {
               setState(prev => ({ ...prev, currentCourse: courseSnap.data() as Course }));
             }
+          }).finally(() => {
+            setState(prev => ({ ...prev, isLoading: false }));
+            setLoading(false);
           });
+        } else {
+          setState(prev => ({ ...prev, isLoading: false }));
+          setLoading(false);
         }
+      } else {
+        // User doc doesn't exist yet
+        console.log("No user profile found, waiting for creation...");
+        setState(prev => ({ ...prev, isLoading: false }));
+        setLoading(false);
       }
-    }, (err) => handleFirestoreError(err, OperationType.GET, `users/${user.uid}`));
+    }, (err) => {
+      console.error('User listener error:', err);
+      setState(prev => ({ ...prev, isLoading: false }));
+      setLoading(false);
+    });
 
     const unsubscribeCourses = onSnapshot(coursesQuery, (snap) => {
       const allCourses = snap.docs.map(d => d.data() as Course);
@@ -96,7 +110,11 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
         isLoading: false
       }));
       setLoading(false);
-    }, (err) => handleFirestoreError(err, OperationType.LIST, `users/${user.uid}/courses`));
+    }, (err) => {
+      console.error('Courses listener error:', err);
+      setState(prev => ({ ...prev, isLoading: false }));
+      setLoading(false);
+    });
 
     return () => {
       unsubscribeUser();
@@ -125,8 +143,11 @@ export function FirebaseProvider({ children }: { children: ReactNode }) {
     };
 
     try {
-      await setDoc(userRef, { ...initialProfile, updatedAt: serverTimestamp() });
-      await setDoc(doc(db, 'users', u.uid, 'courses', courseId), { ...initialCourse, updatedAt: serverTimestamp() });
+      const batch = [
+        setDoc(userRef, { ...initialProfile, updatedAt: serverTimestamp() }),
+        setDoc(doc(db, 'users', u.uid, 'courses', courseId), { ...initialCourse, updatedAt: serverTimestamp() })
+      ];
+      await Promise.all(batch);
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `users/${u.uid}`);
     }

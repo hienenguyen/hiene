@@ -122,11 +122,11 @@ export default function App() {
 
   const weekdays = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
 
-  if (authLoading || (user && state.isLoading)) {
+  if (authLoading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-brand-soft text-brand-hot">
         <Loader2 className="w-12 h-12 animate-spin mb-4" />
-        <p className="font-bold uppercase tracking-widest text-xs">Đang tải dữ liệu...</p>
+        <p className="font-bold uppercase tracking-widest text-xs">Đang kiểm tra tài khoản...</p>
       </div>
     );
   }
@@ -135,11 +135,36 @@ export default function App() {
     return <Login />;
   }
 
-  if (!state.currentCourse) {
+  if (!state.currentCourse && state.isLoading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-brand-soft text-brand-hot">
         <Loader2 className="w-12 h-12 animate-spin mb-4" />
         <p className="font-bold uppercase tracking-widest text-xs">Bé đợi chút nhé...</p>
+      </div>
+    );
+  }
+
+  if (!state.currentCourse) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-8 bg-brand-soft text-center">
+        <div className="bg-white p-8 rounded-[40px] shadow-xl border-b-8 border-brand-pink max-w-sm w-full">
+          <div className="text-6xl mb-6">🐻</div>
+          <h1 className="text-2xl font-black text-gray-800 mb-4">Chào mừng gấu con!</h1>
+          <p className="text-gray-500 mb-8 text-sm">Bạn chưa có dữ liệu học đàn. Nhấn nút bên dưới để tạo hồ sơ mới nhé!</p>
+          <button 
+            onClick={() => createInitialUser(user)}
+            className="w-full bg-brand-hot text-white py-4 rounded-3xl font-black shadow-lg flex items-center justify-center gap-3 active:scale-95"
+          >
+            <Plus size={20} />
+            BẮT ĐẦU NGAY
+          </button>
+          <button 
+            onClick={() => auth.signOut()}
+            className="mt-4 text-xs font-bold text-gray-400 hover:text-red-400 uppercase tracking-widest"
+          >
+            Đăng xuất
+          </button>
+        </div>
       </div>
     );
   }
